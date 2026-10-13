@@ -1,1 +1,31 @@
+name: Build Tesseract OCR Lab APK
 
+on: [push, workflow_dispatch]
+
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+          cache-disabled: true
+      - name: Download Russian and English OCR models
+        run: bash scripts/fetch-tessdata.sh
+      - name: Build test APK
+        run: gradle --no-daemon :app:assembleDebug
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ScanSklad-Tesseract-Lab-debug-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
