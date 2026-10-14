@@ -11,7 +11,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="#145826"
-        android:text="ScanSklad · тест Tesseract"
+        android:text="ScanSklad · Tesseract LAB 0.2"
         android:textColor="#FFFFFF"
         android:textStyle="bold"
         android:textSize="19sp"
@@ -79,7 +79,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Tesseract · русский + английский"
+            android:text="Tesseract · как в Web (PSM 6, цвет)"
             android:textColor="#145826"
             android:textStyle="bold" />
         <TextView
@@ -92,6 +92,20 @@
             android:textColor="#161616"
             android:textIsSelectable="true"
             android:textSize="21sp"/>
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="Tesseract · старый LAB (PSM 7, серый)"
+            android:textColor="#145826" android:textStyle="bold" />
+        <TextView android:id="@+id/lineResult"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:minHeight="45dp" android:paddingVertical="6dp" android:text="—"
+            android:textColor="#161616" android:textIsSelectable="true" android:textSize="20sp"/>
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="Справочник адресов (подсказка, не исправляет автоматически)"
+            android:textColor="#145826" android:textStyle="bold" />
+        <TextView android:id="@+id/catalogResult"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:minHeight="42dp" android:paddingVertical="6dp" android:text="—"
+            android:textColor="#333333" android:textSize="15sp"/>
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

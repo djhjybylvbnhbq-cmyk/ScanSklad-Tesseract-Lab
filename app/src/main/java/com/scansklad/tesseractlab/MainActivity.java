@@ -40,21 +40,22 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class MainActivity extends AppCompatActivity {
     private PreviewView cameraView;
     private View scanFrame;
-    private TextView status, tesseractResult, mlResult, testCount;
+    private TextView status, tesseractResult, lineResult, mlResult, catalogResult, testCount;
     private EditText expected;
     private Button scanButton, autoButton;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final ExecutorService inferenceWorker = Executors.newSingleThreadExecutor();
     private TesseractLineRecognizer tesseract;
+    private AddressCatalog catalog;
     private TextRecognizer mlkit;
     private volatile boolean processing = false;
     private boolean autoMode = false;
     private boolean active = false;
     private int modelFailures = 0;
     private ProcessCameraProvider cameraProvider;
-    private String lastTesseract = "", lastMl = "";
-    private long lastTesseractMs = 0, lastMlMs = 0;
-    private StringBuilder report = new StringBuilder("ScanSklad Tesseract LAB — сравнительный тест\n");
+    private String lastTesseract = "", lastLine = "", lastMl = "";
+    private long lastTesseractMs = 0, lastLineMs = 0, lastMlMs = 0;
+    private StringBuilder report = new StringBuilder("ScanSklad Tesseract LAB v0.2 — сравнение веб-подобного OCR\n");
     private int reports = 0;
     private final Runnable autoScan = new Runnable() {
         @Override public void run() {
@@ -78,6 +79,8 @@ public final class MainActivity extends AppCompatActivity {
         status = findViewById(R.id.statusText);
         tesseractResult = findViewById(R.id.tesseractResult);
         mlResult = findViewById(R.id.mlResult);
+        lineResult = findViewById(R.id.lineResult);
+        catalogResult = findViewById(R.id.catalogResult);
         testCount = findViewById(R.id.countText);
         expected = findViewById(R.id.expectedInput);
         scanButton = findViewById(R.id.scanButton);
@@ -97,8 +100,9 @@ public final class MainActivity extends AppCompatActivity {
         inferenceWorker.submit(() -> {
             try {
                 TesseractLineRecognizer built = new TesseractLineRecognizer(getApplicationContext());
+                catalog = new AddressCatalog(getAssets().open("address_catalog.txt"));
                 tesseract = built;
-                runOnUiThread(() -> status.setText("Модель Tesseract готова. Наведите рамку на строку."));
+                runOnUiThread(() -> status.setText("Tesseract готов. Справочник: " + catalog.size() + " адреса. Наведите рамку на строку."));
             } catch (Throwable failure) {
                 runOnUiThread(() -> status.setText("Ошибка Tesseract: " + failure.getClass().getSimpleName()
                         + " — " + failure.getMessage()));
@@ -140,8 +144,10 @@ public final class MainActivity extends AppCompatActivity {
         Bitmap roi = Bitmap.createBitmap(snapshot, l, t, r-l, b-t);
         snapshot.recycle();
         processing = true;
-        lastTesseract = ""; lastMl = ""; lastTesseractMs = 0; lastMlMs = 0;
+        lastTesseract = ""; lastLine = ""; lastMl = ""; lastTesseractMs = 0; lastLineMs = 0; lastMlMs = 0;
         tesseractResult.setText("Распознаём...");
+        lineResult.setText("Распознаём...");
+        catalogResult.setText("Проверяем справочник...");
         mlResult.setText("Распознаём...");
         status.setText("Распознаём один и тот же кадр двумя движками...");
         final AtomicInteger pending = new AtomicInteger(2);
@@ -154,12 +160,19 @@ public final class MainActivity extends AppCompatActivity {
 
         inferenceWorker.execute(() -> {
             try {
-                TesseractLineRecognizer.Recognition rec = tesseract.recognize(roi);
+                TesseractLineRecognizer.Recognition rec = tesseract.recognizeWebStyle(roi);
+                TesseractLineRecognizer.Recognition line = tesseract.recognizeLine(roi);
+                String catalogMessage = catalog.inspect(rec.text);
                 runOnUiThread(() -> {
                     lastTesseract = rec.text;
                     lastTesseractMs = rec.millis;
+                    lastLine = line.text;
+                    lastLineMs = line.millis;
                     tesseractResult.setText((rec.text.isEmpty() ? "[не распознано]" : rec.text)
                             + String.format(Locale.ROOT, "\n%d%% · %d мс", rec.confidence, rec.millis));
+                    lineResult.setText((line.text.isEmpty() ? "[не распознано]" : line.text)
+                            + String.format(Locale.ROOT, "\n%d%% · %d мс", line.confidence, line.millis));
+                    catalogResult.setText(catalogMessage);
                     status.setText("Готово. Сверьте оба результата с этикеткой.");
                 });
             } catch (Throwable e) {
@@ -167,6 +180,8 @@ public final class MainActivity extends AppCompatActivity {
                 runOnUiThread(() -> {
                     lastTesseract = "ОШИБКА: " + e.getMessage();
                     tesseractResult.setText(lastTesseract);
+                    lineResult.setText("Ошибка первого движка");
+                    catalogResult.setText("Справочник: проверка не выполнена");
                     status.setText("Ошибка модели — сохраните отчёт. Попытка " + modelFailures);
                 });
             } finally { runOnUiThread(finish); }
@@ -197,16 +212,20 @@ public final class MainActivity extends AppCompatActivity {
         reports++;
         String target = canonical(truth);
         boolean p = canonical(lastTesseract).equals(target);
+        boolean l = canonical(lastLine).equals(target);
         boolean m = canonical(lastMl).equals(target);
         report.append("\n#").append(reports).append(" Этикетка: ").append(truth)
                 .append("\n Tesseract: ").append(lastTesseract).append(" [")
                 .append(p ? "верно" : "ошибка").append("] ").append(lastTesseractMs).append(" мс")
+                .append("\n Tesseract LINE: ").append(lastLine).append(" [")
+                .append(l ? "верно" : "ошибка").append("] ").append(lastLineMs).append(" мс")
+                .append("\n Справочник: ").append(catalog == null ? "нет" : catalog.inspect(lastTesseract))
                 .append("\n ML Kit: ").append(lastMl).append(" [")
                 .append(m ? "верно" : "ошибка").append("] ").append(lastMlMs).append(" мс\n");
         getPreferences(MODE_PRIVATE).edit().putInt("report_count", reports)
                 .putString("report", report.toString()).apply();
-        testCount.setText("Записано тестов: " + reports + "  |  последний: Tesseract "
-                + (p ? "✓" : "✗") + ", ML Kit " + (m ? "✓" : "✗"));
+        testCount.setText("Тестов: " + reports + "  | WEB-режим " + (p ? "✓" : "✗")
+                + ", LINE " + (l ? "✓" : "✗") + ", ML Kit " + (m ? "✓" : "✗"));
         Toast.makeText(this, "Тест записан", Toast.LENGTH_SHORT).show();
     }
 

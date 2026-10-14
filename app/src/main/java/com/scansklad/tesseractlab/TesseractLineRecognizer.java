@@ -71,10 +71,30 @@ public final class TesseractLineRecognizer implements AutoCloseable {
         if (!tmp.renameTo(dst)) throw new IOException("Не удалось сохранить " + dst);
     }
 
-    /** Must be called from the SAME dedicated background thread that initialized Tesseract. */
+    /** The old LAB v0.1 baseline: grayscale + one line. */
     public Recognition recognize(Bitmap frame) {
+        return recognizeLine(frame);
+    }
+
+    /** Baseline Tesseract LAB v0.1 settings (PSM_SINGLE_LINE + grayscale). */
+    public Recognition recognizeLine(Bitmap frame) {
+        return run(frame, false);
+    }
+
+    /** Same principal image-processing choices as ScanSklad Web v1.0:
+     *  SINGLE_BLOCK segmentation + no forced grayscale + upscaling to ~1100 px.
+     *  The native engine, input camera and postprocessing are not identical to the web app. */
+    public Recognition recognizeWebStyle(Bitmap frame) {
+        return run(frame, true);
+    }
+
+    /** Must be called from the SAME dedicated background thread that initialized Tesseract. */
+    private Recognition run(Bitmap frame, boolean webStyle) {
         long start = SystemClock.elapsedRealtime();
-        Bitmap processed = preprocess(frame);
+        Bitmap processed = webStyle ? preprocessWeb(frame) : preprocess(frame);
+        tess.setPageSegMode(webStyle
+                ? TessBaseAPI.PageSegMode.PSM_SINGLE_BLOCK
+                : TessBaseAPI.PageSegMode.PSM_SINGLE_LINE);
         try {
             tess.setImage(processed);
             String text = tess.getUTF8Text();
@@ -102,6 +122,21 @@ public final class TesseractLineRecognizer implements AutoCloseable {
         paint.setColorFilter(new ColorMatrixColorFilter(grayscale));
         canvas.drawBitmap(bitmap, null, new android.graphics.Rect(0, 0, targetW, targetH), paint);
         return output;
+    }
+
+    /** Preserve colour as the web app does; do not apply guessed substitutions. */
+    private static Bitmap preprocessWeb(Bitmap bitmap) {
+        int w = Math.max(1, bitmap.getWidth());
+        int h = Math.max(1, bitmap.getHeight());
+        int targetW = Math.min(1550, Math.max(w, 1100));
+        int targetH = Math.max(1, Math.round((float) targetW * h / w));
+        // The web app uses an ordinary canvas; Android bitmap bilinear filtering is the
+        // closest practical mapping without turning this into a browser runtime.
+        Bitmap out = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(out);
+        Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
+        canvas.drawBitmap(bitmap, null, new android.graphics.Rect(0, 0, targetW, targetH), paint);
+        return out;
     }
 
     @Override public void close() {
